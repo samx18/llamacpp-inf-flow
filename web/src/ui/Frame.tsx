@@ -8,7 +8,7 @@ const STAGE_TITLE: Record<StageKey, string> = {
   tokenize: 'Tokenize', prefill: 'Prefill', build: 'Build graph', dispatch: 'Dispatch', sample: 'Sample', repeat: 'Repeat',
 };
 
-export function PipelineRail({ beat, onStage }: { beat: Beat; onStage: (s: StageKey) => void }) {
+export function PipelineRail({ beat, onStage, subtitles }: { beat: Beat; onStage: (s: StageKey) => void; subtitles?: Record<StageKey, string> }) {
   const pulsing = beat.stage === 'repeat';
   return (
     <div className="rail">
@@ -16,6 +16,7 @@ export function PipelineRail({ beat, onStage }: { beat: Beat; onStage: (s: Stage
         {STAGES.map((s) => (
           <button key={s} className={`rail-chip${beat.stage === s ? ' active' : ''}`} onClick={() => onStage(s)} data-rail={s}>
             {STAGE_TITLE[s]}
+            {subtitles && <span className="rail-sub">{subtitles[s]}</span>}
           </button>
         ))}
       </div>

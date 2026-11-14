@@ -42,3 +42,27 @@ export const INTERACTIVE_DURATIONS = {
   repeat: 1800,
   hold: 1000,
 };
+
+/**
+ * Overview tab (plain-language version), used both interactively and in its Record mode.
+ * Slower than the technical pass so captions can be read. Every phase is one beat.
+ */
+export const OVERVIEW_DURATIONS = {
+  tokenize: 7000,
+  prefill: 7000,
+  build: 7000,
+  dispatch: 6000,
+  sample: 9000,
+  repeat: 5000,
+  /** step 1: the one-token pass (new, smaller plan), shown briefly */
+  secondToken: 12000,
+  /** each later token: one beat (sentence grows, memory gains a slot) */
+  laterToken: 1200,
+  hold: 5000,
+};
+
+/** Shares of secondToken per phase */
+export const OVERVIEW_SECOND_SPLIT = { build: 0.3, dispatch: 0.2, sample: 0.3, repeat: 0.2 };
+
+/** Budget the Overview record check reports against (ms) */
+export const OVERVIEW_BUDGET_MS = 85000;

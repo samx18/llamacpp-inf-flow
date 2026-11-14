@@ -32,6 +32,14 @@ cd llamacpp-inf-flow
 `models/stories260K.gguf` is committed. To fetch it again (SHA-256 checked):
 `./scripts/fetch-model.sh` (from `ggml-org/models-moved`, `tinyllamas` folder).
 
+The page has two tabs on the same trace:
+
+- **Overview**: the six phases in plain language for an audience that does not know transformer
+  internals (open directly with `/?view=overview`). One caption per phase; every number in the
+  captions and every visual comes from the trace. Captions live in `web/src/overview/OverviewViews.tsx`.
+- **Inside llama.cpp**: the technical view below, labelled only with llama.cpp function, op and
+  tensor names.
+
 In the page:
 
 - Type a prompt or pick a preset and press **Run**: the dev server runs the tracer once
@@ -43,8 +51,9 @@ In the page:
   hover a node for its name, op, shape and the source line that named it.
 - **Sample**: *fork* on any candidate reruns the tracer with `--force`, taking that token instead.
 - Hover a generated token for its attention (`kq_soft_max-N`, all heads, all layers).
-- Press **r** for **Record mode** (or open `/?record=1`): fixed 1920×1080, about 50 s, no
-  settings or transport, playing the saved trace so every take is identical. Esc leaves it.
+- Press **r** for **Record mode** of the current tab (or open `/?record=1`, `/?record=1&view=overview`):
+  fixed 1920×1080, no settings or transport, playing the saved trace so every take is identical.
+  About 50 s for Inside llama.cpp, about 70 s for Overview. Esc leaves it.
 
 ## Record mode
 
@@ -83,12 +92,14 @@ a time so each can be observed); compare them with each other, not with benchmar
 python3 -I scripts/check-phase1.py                 # schema; greedy ids == examples/simple; stable graphs
 (cd web && npx playwright test tests/phase2.spec.ts)   # saved trace plays; data from trace; exact step-back
 (cd web && npx playwright test tests/phase3.spec.ts)   # live trace < 1 s, ids == direct CLI run; fork; errors
-(cd web && npx playwright test tests/record.spec.ts)   # Record mode: every panel non-empty, within budget
+(cd web && npx playwright test tests/overview.spec.ts) # Overview tab: plays; trace numbers in every phase; exact step-back
+(cd web && npx playwright test tests/record.spec.ts)   # Record mode, both tabs: every panel non-empty, within budget
 (cd web && npx playwright test)                        # all web checks
 ```
 
 `RECORD_OUT=<dir> npx playwright test tests/record.spec.ts` also writes per-stage screenshots and a
-1920×1080 `.webm` of the pass.
+1920×1080 `.webm` of each pass. The tests start their own dev server on port 5174 and never reuse
+a running one.
 
 ## Layout
 

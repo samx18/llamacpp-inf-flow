@@ -2,7 +2,7 @@
 // sub-part of it (one dispatch block, one sampler stage). Everything shown is a pure function of
 // (trace, beat, progress), so seeking to any time restores exactly that state.
 import type { Trace } from './parse';
-import { FIRST_LOOP_SPLIT, INTERACTIVE_DURATIONS, RECORD_DURATIONS } from '../record/script';
+import { FIRST_LOOP_SPLIT, INTERACTIVE_DURATIONS, OVERVIEW_DURATIONS, OVERVIEW_SECOND_SPLIT, RECORD_DURATIONS } from '../record/script';
 
 export const STAGES = ['tokenize', 'prefill', 'build', 'dispatch', 'sample', 'repeat'] as const;
 export type StageKey = (typeof STAGES)[number];
@@ -20,7 +20,8 @@ export interface Beat {
   dur: number;
 }
 
-export type Mode = 'interactive' | 'record';
+/** interactive / record: the technical tab; overview: the plain-language tab (one beat per phase) */
+export type Mode = 'interactive' | 'record' | 'overview';
 
 function subCount(trace: Trace, step: number, stage: StageKey): number {
   const s = trace.steps[step];
@@ -33,7 +34,7 @@ export function buildTimeline(trace: Trace, mode: Mode): Beat[] {
   const beats: Beat[] = [];
   let t = 0;
   const push = (step: number, stage: StageKey, total: number, kind: Beat['kind'] = 'full') => {
-    const n = kind === 'full' ? subCount(trace, step, stage) : 1;
+    const n = kind === 'full' && mode !== 'overview' ? subCount(trace, step, stage) : 1;
     for (let sub = 0; sub < n; sub++) {
       beats.push({ index: beats.length, step, stage, sub, nSub: n, kind, start: t, dur: total / n });
       t += total / n;
@@ -51,6 +52,25 @@ export function buildTimeline(trace: Trace, mode: Mode): Beat[] {
       push(s, 'repeat', d.repeat);
     }
     push(nSteps - 1, 'repeat', d.hold, 'final');
+    return beats;
+  }
+
+  if (mode === 'overview') {
+    const o = OVERVIEW_DURATIONS;
+    push(0, 'tokenize', o.tokenize);
+    push(0, 'prefill', o.prefill);
+    push(0, 'build', o.build);
+    push(0, 'dispatch', o.dispatch);
+    push(0, 'sample', o.sample);
+    push(0, 'repeat', o.repeat);
+    if (nSteps > 1) {
+      push(1, 'build', o.secondToken * OVERVIEW_SECOND_SPLIT.build);
+      push(1, 'dispatch', o.secondToken * OVERVIEW_SECOND_SPLIT.dispatch);
+      push(1, 'sample', o.secondToken * OVERVIEW_SECOND_SPLIT.sample);
+      push(1, 'repeat', o.secondToken * OVERVIEW_SECOND_SPLIT.repeat);
+    }
+    for (let s = 2; s < nSteps; s++) push(s, 'repeat', o.laterToken, 'quick');
+    push(nSteps - 1, 'repeat', o.hold, 'final');
     return beats;
   }
 

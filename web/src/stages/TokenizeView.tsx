@@ -5,7 +5,7 @@ import type { ViewProps } from './types';
 interface Seg { text: string; tok: number | null }
 
 /** Split the prompt into segments at the token byte spans the tracer reported */
-function segments(prompt: string, spans: { start: number | null; end: number | null }[]): Seg[] {
+export function segments(prompt: string, spans: { start: number | null; end: number | null }[]): Seg[] {
   // byte offset -> UTF-16 index (layout only)
   const enc = new TextEncoder();
   const byteToChar: number[] = [];

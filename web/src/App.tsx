@@ -13,6 +13,10 @@ import { RepeatView } from './stages/RepeatView';
 import type { ViewProps } from './stages/types';
 import { AttentionPopover, OutputStrip, PipelineRail, Transport } from './ui/Frame';
 import { PromptBar, type RunSettings } from './ui/PromptBar';
+import { OV_VIEWS, PHASE_PLAIN, Sentence } from './overview/OverviewViews';
+import './overview/overview.css';
+
+export type View = 'overview' | 'detail';
 
 const W = 1920, H = 1080;
 
@@ -53,7 +57,9 @@ function settingsOf(trace: Trace): RunSettings {
 export function App() {
   const params = new URLSearchParams(location.search);
   const [trace, setTrace] = useState<Trace | null>(null);
-  const [mode, setMode] = useState<Mode>('interactive');
+  const [record, setRecord] = useState(false);
+  const [view, setView] = useState<View>(params.get('view') === 'overview' ? 'overview' : 'detail');
+  const mode: Mode = view === 'overview' ? 'overview' : record ? 'record' : 'interactive';
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('saved trace');
   const [busy, setBusy] = useState(false);
@@ -79,7 +85,7 @@ export function App() {
       window.__recordLog = [];
       document.body.dataset.recordState = 'playing';
       setTrace(t);
-      setMode('record');
+      setRecord(true);
     } catch (e) { setError(String(e)); }
   }, []);
 
@@ -90,8 +96,8 @@ export function App() {
 
   const beats = useMemo(() => (trace ? buildTimeline(trace, mode) : null), [trace, mode]);
   const player = usePlayer(beats ?? [{ index: 0, step: 0, stage: 'tokenize', sub: 0, nSub: 1, kind: 'full', start: 0, dur: 1 }], {
-    autoplay: mode === 'record',
-    onEnd: () => { if (mode === 'record') document.body.dataset.recordState = 'done'; },
+    autoplay: record,
+    onEnd: () => { if (record) document.body.dataset.recordState = 'done'; },
   });
 
   // apply a jump requested before the new trace was loaded (fork)
@@ -105,7 +111,7 @@ export function App() {
       const { trace: t, ms } = await runLive(s);
       window.__lastRun = { ms, ids: t.steps.map((x) => x.selected.id), settings: s };
       pendingJump.current = jump ?? null;
-      setMode('interactive');
+      setRecord(false);
       setTrace(t);
       setStatus(`live trace · totals_us.total ${t.done.totals_us.total.toLocaleString('en-US')} µs`);
     } catch (e) { setError(String(e instanceof Error ? e.message : e)); }
@@ -128,14 +134,13 @@ export function App() {
       else if (e.key === 'ArrowLeft') { e.preventDefault(); player.stepBack(); }
       else if (e.key === 'ArrowDown') { e.preventDefault(); player.stageForward(); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); player.stageBack(); }
-      else if (e.key === 'r' && mode !== 'record') startRecord();
-      else if (e.key === 'Escape' && mode === 'record') { setMode('interactive'); document.body.dataset.recordState = ''; }
+      else if (e.key === 'r' && !record) startRecord();
+      else if (e.key === 'Escape' && record) { setRecord(false); document.body.dataset.recordState = ''; }
     };
     window.addEventListener('keydown', f);
     return () => window.removeEventListener('keydown', f);
-  }, [player, mode, startRecord]);
+  }, [player, record, startRecord]);
 
-  const record = mode === 'record';
   const beat = player.beat;
   const p = reduced ? 1 : player.progress;
 
@@ -155,25 +160,47 @@ export function App() {
 
   const step = trace.steps[Math.min(beat.step, trace.steps.length - 1)];
   const panelW = W - 64;
-  const panelH = record ? 780 : 690;
+  const overview = view === 'overview';
+  const panelH = record ? 780 : 650;
   const vp: ViewProps = { trace, step, beat, p, record, width: panelW, height: panelH, onFork: record ? undefined : onFork };
   const View = { tokenize: TokenizeView, prefill: PrefillView, build: BuildView, dispatch: DispatchView, sample: SampleView, repeat: RepeatView }[beat.stage];
 
   return (
     <div className="viewport">
-      <div className={`canvas${record ? ' record' : ''}`} style={{ width: W, height: H, transform: `scale(${scale})` }}
-           data-mode={mode} data-beat={beat.index} data-stage={beat.stage} data-step={beat.step}>
+      <div className={`canvas${record ? ' record' : ''}${overview ? ' overview' : ''}`} style={{ width: W, height: H, transform: `scale(${scale})` }}
+           data-mode={mode} data-view={view} data-beat={beat.index} data-stage={beat.stage} data-step={beat.step}>
+        {!record && (
+          <div className="tabs">
+            {(['overview', 'detail'] as const).map((v) => (
+              <button key={v} className={`tab${view === v ? ' on' : ''}`} data-tab={v} onClick={() => setView(v)}>
+                {v === 'overview' ? 'Overview' : 'Inside llama.cpp'}
+              </button>
+            ))}
+          </div>
+        )}
         {!record && (
           <PromptBar settings={settingsOf(trace)} onRun={(s) => run(s)} busy={busy} status={status} error={error} key={JSON.stringify(settingsOf(trace))} />
         )}
-        <PipelineRail beat={beat} onStage={(s) => player.jumpTo(s === 'tokenize' || s === 'prefill' ? 0 : beat.step, s)} />
+        <PipelineRail beat={beat} subtitles={overview ? PHASE_PLAIN : undefined}
+          onStage={(s) => player.jumpTo(s === 'tokenize' || s === 'prefill' ? 0 : beat.step, s)} />
         <div className="panel" style={{ height: panelH }}>
-          <View key={`${beat.stage}-${beat.kind}`} {...vp} />
+          {overview
+            ? <div key={`${beat.stage}-${beat.kind}`} style={{ height: '100%' }}>{OV_VIEWS[beat.stage]({ trace, step, beat, p, record })}</div>
+            : <View key={`${beat.stage}-${beat.kind}`} {...vp} />}
         </div>
-        <OutputStrip trace={trace} beat={beat} record={record} onToken={(s) => player.jumpTo(s, 'sample')} onHover={setHoverStep} />
-        {!record && hoverStep !== null && <AttentionPopover trace={trace} step={hoverStep} />}
+        {overview ? (
+          <div className="output-strip" data-output style={{ visibility: beat.stage === 'repeat' ? 'hidden' : 'visible' }}><Sentence trace={trace} upTo={producedUpTo(beat)} highlight={beat.step} /></div>
+        ) : (
+          <OutputStrip trace={trace} beat={beat} record={record} onToken={(s) => player.jumpTo(s, 'sample')} onHover={setHoverStep} />
+        )}
+        {!record && !overview && hoverStep !== null && <AttentionPopover trace={trace} step={hoverStep} />}
         {!record && <Transport player={player} />}
       </div>
     </div>
   );
+}
+
+/** Steps whose chosen token is already in the output at this beat (same rule as the token strip) */
+function producedUpTo(beat: { step: number; stage: StageKey }): number {
+  return beat.stage === 'repeat' ? beat.step + 1 : beat.step;
 }
