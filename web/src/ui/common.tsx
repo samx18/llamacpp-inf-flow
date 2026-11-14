@@ -65,15 +65,17 @@ export function TokenChip({ id, text, active, dim, onClick, onHover, big, dataId
 export type CellState = 'empty' | 'filled' | 'target' | 'writing';
 
 /** KV cache: one row per layer (labelled with the llama.cpp cache tensor names), one column per position */
-export function KvGrid({ rowLabels, nPos, state, width, cell = 0, posLabels }: {
+export function KvGrid({ rowLabels, nPos, state, width, cell = 0, posLabels, fontPx = 17 }: {
   rowLabels: string[];
   nPos: number;
   state: (row: number, pos: number) => CellState;
   width: number;
   cell?: number;
   posLabels?: (pos: number) => string | null;
+  /** label font size, for the label column width (monospace advance ~0.61em) */
+  fontPx?: number;
 }) {
-  const labelW = Math.max(60, ...rowLabels.map((l) => l.length * 9.4 + 20));
+  const labelW = Math.max(60, ...rowLabels.map((l) => l.length * fontPx * 0.61 + 24));
   const gap = 3;
   const c = cell || Math.max(10, Math.min(44, Math.floor((width - labelW) / nPos) - gap));
   const h = rowLabels.length * (c + gap) + 26;

@@ -35,8 +35,6 @@ export interface Trace {
   steps: Step[];
   done: DoneEvent;
   graphs: Map<number, BuiltGraph>;
-  /** The largest KV position any decode reached (from decode_end.kv_pos_max), for grid sizing */
-  maxKvPos: number;
   /** Number of KV cells to draw: highest cell any decode wrote, plus one (layout) */
   nCells: number;
   /** cell -> the batch row (token, pos) the tracer saw written into it */
@@ -97,7 +95,6 @@ export function indexTrace(events: TraceEvent[]): Trace {
   }
   if (!info || !tokenize || !done) throw new TraceError('trace is missing model_info, tokenize or done');
   if (steps.length === 0) throw new TraceError('trace has no decode steps');
-  const maxKvPos = Math.max(...steps.map((s) => s.decodeEnd.kv_pos_max));
   const cellRow = new Map<number, { token: number; pos: number; step: number }>();
   const written = new Set<number>();
   for (const s of steps) {
@@ -109,7 +106,7 @@ export function indexTrace(events: TraceEvent[]): Trace {
     });
   }
   const nCells = Math.max(0, ...written) + 1;
-  return { info, tokenize, steps, done, graphs, maxKvPos, nCells, cellRow };
+  return { info, tokenize, steps, done, graphs, nCells, cellRow };
 }
 
 export async function loadTraceUrl(url: string): Promise<Trace> {

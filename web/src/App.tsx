@@ -107,7 +107,7 @@ export function App() {
       pendingJump.current = jump ?? null;
       setMode('interactive');
       setTrace(t);
-      setStatus(`live trace · ${Math.round(ms)} ms`);
+      setStatus(`live trace · totals_us.total ${t.done.totals_us.total.toLocaleString('en-US')} µs`);
     } catch (e) { setError(String(e instanceof Error ? e.message : e)); }
     setBusy(false);
   }, []);

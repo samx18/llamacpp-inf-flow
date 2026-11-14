@@ -14,7 +14,7 @@ export function SampleView({ trace, step, beat, p, record, width, onFork }: View
   let lo = Infinity, hi = -Infinity;
   for (const v of logits) if (v !== null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   for (const s of step.stages) for (const c of s.candidates) if (c.logit !== null) hi = Math.max(hi, c.logit);
-  const chartW = width - 64, chartH = record ? 330 : 300;
+  const chartW = width - 64, chartH = record ? 380 : 300;
   const bw = chartW / nV;
   const y = (v: number) => chartH - ((v - lo) / (hi - lo || 1)) * (chartH - 34);
 
