@@ -125,6 +125,26 @@
     "DecodeEndEvent": {
       "additionalProperties": false,
       "properties": {
+        "block_time_us": {
+          "description": "Sum of node_exec dur_us per block, in block order",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "block": {
+                "$ref": "#/definitions/Int"
+              },
+              "us": {
+                "$ref": "#/definitions/Int"
+              }
+            },
+            "required": [
+              "block",
+              "us"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "compute_us": {
           "$ref": "#/definitions/Int",
           "description": "Sum of node_exec dur_us for this decode"
@@ -135,6 +155,13 @@
         },
         "graph_id": {
           "$ref": "#/definitions/Int"
+        },
+        "kv_cells": {
+          "description": "KV cache cell written for each batch row, in row order: the row-index input (src[1]) of the first SET_ROWS into a cache_k_* tensor. Attention (kq_soft_max) columns index these cells.",
+          "items": {
+            "$ref": "#/definitions/Int"
+          },
+          "type": "array"
         },
         "kv_pos_max": {
           "$ref": "#/definitions/Int",
@@ -149,6 +176,30 @@
         },
         "n_nodes": {
           "$ref": "#/definitions/Int"
+        },
+        "op_time_us": {
+          "description": "Sum of node_exec dur_us per ggml op (ggml_op_desc), largest first",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "n": {
+                "$ref": "#/definitions/Int"
+              },
+              "op": {
+                "type": "string"
+              },
+              "us": {
+                "$ref": "#/definitions/Int"
+              }
+            },
+            "required": [
+              "op",
+              "us",
+              "n"
+            ],
+            "type": "object"
+          },
+          "type": "array"
         },
         "ret": {
           "$ref": "#/definitions/Int",
@@ -172,13 +223,16 @@
         }
       },
       "required": [
+        "block_time_us",
         "compute_us",
         "dur_us",
         "graph_id",
+        "kv_cells",
         "kv_pos_max",
         "kv_pos_min",
         "n_computed",
         "n_nodes",
+        "op_time_us",
         "ret",
         "reused",
         "step",
@@ -322,9 +376,65 @@
         "null"
       ]
     },
+    "GraphBlock": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "type": "string"
+        },
+        "first": {
+          "$ref": "#/definitions/Int",
+          "description": "First and last op node id in the block"
+        },
+        "id": {
+          "$ref": "#/definitions/Int",
+          "description": "Anchor node id"
+        },
+        "last": {
+          "$ref": "#/definitions/Int"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "n_leaves": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_ops": {
+          "$ref": "#/definitions/Int"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "base",
+        "layer",
+        "n_ops",
+        "n_leaves",
+        "first",
+        "last"
+      ],
+      "type": "object"
+    },
     "GraphEvent": {
       "additionalProperties": false,
       "properties": {
+        "blocks": {
+          "description": "Blocks in execution order (absent on reused graphs)",
+          "items": {
+            "$ref": "#/definitions/GraphBlock"
+          },
+          "type": "array"
+        },
         "edges": {
           "description": "[from, to] node ids, one per non-null src[] slot of each graph node, in src order",
           "items": {
@@ -391,6 +501,17 @@
           "description": "name with ggml's \" (view)\", \" (permuted)\", ... suffixes and the \"-N\" layer suffix removed",
           "type": "string"
         },
+        "block": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Block (id of its anchor node) in the block view. Anchors are op nodes named exactly embd, attn_out-N, ffn_out-N, l_out-N, result_norm, result_output. Leaves take their first consumer's block."
+        },
         "computed": {
           "description": "GGML_TENSOR_FLAG_COMPUTE: false for branches of ggml_build_forward_select that are not taken",
           "type": "boolean"
@@ -435,6 +556,13 @@
           "description": "ggml_get_name, as set by llama.cpp (e.g. \"attn_out-3\", \"Qcur-0 (view)\")",
           "type": "string"
         },
+        "named_at": {
+          "description": "Source lines that assign this tensor name (cb / ggml_set_name / ggml_format_name), up to 3",
+          "items": {
+            "$ref": "#/definitions/SrcLoc"
+          },
+          "type": "array"
+        },
         "op": {
           "description": "ggml_op_desc (unary ops show their unary name)",
           "type": "string"
@@ -451,12 +579,14 @@
         "base",
         "layer",
         "group",
+        "block",
         "shape",
         "dtype",
         "is_weight",
         "computed",
         "is_input",
-        "is_output"
+        "is_output",
+        "named_at"
       ],
       "type": "object"
     },
@@ -544,6 +674,9 @@
             "commit": {
               "type": "string"
             },
+            "commit_full": {
+              "type": "string"
+            },
             "tag": {
               "type": [
                 "string",
@@ -553,6 +686,7 @@
           },
           "required": [
             "commit",
+            "commit_full",
             "tag"
           ],
           "type": "object"
@@ -632,6 +766,13 @@
         "settings": {
           "$ref": "#/definitions/TracerSettings"
         },
+        "sources": {
+          "additionalProperties": {
+            "$ref": "#/definitions/SrcLoc"
+          },
+          "description": "Definitions of the llama.cpp / ggml functions behind each stage. Keys: tokenize, token_to_piece, vocab_is_eog, batch_init, decode, process_ubatch, build_graph, graph_compute, sched_compute, sched_splits, memory_pos_max, get_logits_ith, sampler_apply, sampler_accept, sampler_<llama_sampler_name> (e.g. sampler_top-k), and arch_graph when the architecture's graph builder was found.",
+          "type": "object"
+        },
         "step": {
           "$ref": "#/definitions/Int",
           "minimum": 0
@@ -648,6 +789,13 @@
         "type": {
           "const": "model_info",
           "type": "string"
+        },
+        "vocab": {
+          "description": "llama_token_to_piece(special=true) for every token id, invalid UTF-8 replaced with U+FFFD",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "vocab_type": {
           "description": "llama_vocab_type: name of the enum value (SPM, BPE, ...)",
@@ -678,10 +826,12 @@
         "n_vocab",
         "name",
         "settings",
+        "sources",
         "step",
         "system_info",
         "t_us",
         "type",
+        "vocab",
         "vocab_type"
       ],
       "type": "object"
@@ -779,6 +929,10 @@
         "selected": {
           "$ref": "#/definitions/Int"
         },
+        "size": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_token_data_array.size after this sampler"
+        },
         "sorted": {
           "description": "llama_token_data_array.sorted / .selected after this sampler",
           "type": "boolean"
@@ -804,6 +958,7 @@
         "name",
         "params",
         "selected",
+        "size",
         "sorted",
         "step",
         "t_us",
@@ -819,6 +974,33 @@
       "maxItems": 4,
       "minItems": 4,
       "type": "array"
+    },
+    "SrcLoc": {
+      "additionalProperties": false,
+      "description": "A location in the pinned llama.cpp source (read from it at build time by scripts/gen-sources.py)",
+      "properties": {
+        "file": {
+          "description": "Path relative to the llama.cpp repo root",
+          "type": "string"
+        },
+        "fn": {
+          "description": "Function name, for stage functions",
+          "type": "string"
+        },
+        "line": {
+          "$ref": "#/definitions/Int"
+        },
+        "url": {
+          "description": "GitHub link at the pinned commit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "url"
+      ],
+      "type": "object"
     },
     "TensorStats": {
       "additionalProperties": false,
@@ -911,6 +1093,10 @@
     "TokenSelectedEvent": {
       "additionalProperties": false,
       "properties": {
+        "forced": {
+          "description": "true when the token came from --force rather than the sampler",
+          "type": "boolean"
+        },
         "id": {
           "$ref": "#/definitions/Int"
         },
@@ -937,7 +1123,7 @@
         },
         "selected": {
           "$ref": "#/definitions/Int",
-          "description": "Index of the selected entry in the final candidate array"
+          "description": "Index of the selected entry in the final candidate array (-1 if forced and not present)"
         },
         "step": {
           "$ref": "#/definitions/Int",
@@ -954,6 +1140,7 @@
         }
       },
       "required": [
+        "forced",
         "id",
         "is_eog",
         "logit",
@@ -1039,6 +1226,13 @@
         "flash_attn": {
           "type": "boolean"
         },
+        "force": {
+          "description": "--force: token ids that replace the sampled token at steps 0..n-1 (fork from a token)",
+          "items": {
+            "$ref": "#/definitions/Int"
+          },
+          "type": "array"
+        },
         "graph_reuse_disabled": {
           "type": "boolean"
         },
@@ -1084,7 +1278,8 @@
         "n_threads",
         "flash_attn",
         "capture",
-        "graph_reuse_disabled"
+        "graph_reuse_disabled",
+        "force"
       ],
       "type": "object"
     }

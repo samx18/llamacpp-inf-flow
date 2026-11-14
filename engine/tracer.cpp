@@ -10,6 +10,8 @@
 #include "ggml-backend.h"
 #include "llama.h"
 
+#include "llama_sources.h"   // generated from the pinned source by scripts/gen-sources.py
+
 #include <sys/stat.h>
 
 #include <algorithm>
@@ -28,6 +30,9 @@
 #endif
 #ifndef LLAMACPP_TAG
 #define LLAMACPP_TAG ""
+#endif
+#ifndef LLAMACPP_COMMIT_FULL
+#define LLAMACPP_COMMIT_FULL LLAMACPP_COMMIT
 #endif
 
 // ---------------------------------------------------------------------------------------------
@@ -139,13 +144,14 @@ struct Settings {
     int ctx_size = 0;   // 0: n_prompt + n_predict
     bool verbose = false;
     std::vector<std::string> capture = {"kq_soft_max", "l_out", "result_output"};
+    std::vector<llama_token> force;   // --force: override the sampled token at steps 0..n-1 (fork)
 };
 
 static void usage(const char * argv0) {
     fprintf(stderr,
         "usage: %s --model FILE [--prompt TEXT] [--n-predict N] [--seed N]\n"
         "          [--greedy | --top-k N --top-p P --temp T] [--ctx-size N]\n"
-        "          [--capture name,name,...] [--verbose]\n"
+        "          [--capture name,name,...] [--force id,id,...] [--verbose]\n"
         "Writes newline-delimited JSON trace events to stdout.\n", argv0);
 }
 
@@ -161,6 +167,16 @@ static bool parse_args(int argc, char ** argv, Settings & st) {
         else if (a == "--n-predict" || a == "-n") st.n_predict = atoi(next("--n-predict"));
         else if (a == "--seed")                   st.seed = (uint32_t) strtoul(next("--seed"), nullptr, 10);
         else if (a == "--greedy")                 st.greedy = true;
+        else if (a == "--force") {
+            std::string v = next("--force");
+            size_t p = 0;
+            while (p < v.size()) {
+                size_t q = v.find(',', p);
+                if (q == std::string::npos) q = v.size();
+                if (q > p) st.force.push_back((llama_token) atoi(v.substr(p, q - p).c_str()));
+                p = q + 1;
+            }
+        }
         else if (a == "--top-k")                  st.top_k = atoi(next("--top-k"));
         else if (a == "--top-p")                  st.top_p = (float) atof(next("--top-p"));
         else if (a == "--temp")                   st.temp = (float) atof(next("--temp"));
@@ -261,6 +277,9 @@ struct Tracer {
 
     // the graph that llama.cpp keeps for reuse
     std::vector<const ggml_tensor *> prev_ptrs;
+    std::vector<int> node_block;
+    std::vector<int64_t> kv_cells;     // KV cache cell of each batch row (first cache_k SET_ROWS index input)      // block (anchor node id) of each node of the current graph, -1 if none
+    std::string arch;
 };
 
 static Tracer * g_tr = nullptr;
@@ -339,6 +358,14 @@ static bool cb_eval(ggml_tensor * t, bool ask, void * ud) {
     e.t_us = tr->t_ask_return;
     e.dur_us = t_done - tr->t_ask_return;
     e.computed = (t->flags & GGML_TENSOR_FLAG_COMPUTE) != 0;
+    // the row indices of the first K-cache write are the cells this batch occupies
+    if (e.computed && tr->kv_cells.empty() && t->op == GGML_OP_SET_ROWS && strncmp(ggml_get_name(t), "cache_k_", 8) == 0) {
+        const ggml_tensor * ix = t->src[1];
+        if (ix && ix->data && ix->buffer && ggml_backend_buffer_is_host(ix->buffer) && ggml_is_contiguous(ix)) {
+            for (int64_t k = 0; k < ggml_nelements(ix); k++)
+                tr->kv_cells.push_back(ix->type == GGML_TYPE_I64 ? ((const int64_t *) ix->data)[k] : ((const int32_t *) ix->data)[k]);
+        }
+    }
     if (e.computed) {
         std::string base; int layer;
         split_layer(strip_ggml_suffix(ggml_get_name(t)), base, layer);
@@ -391,7 +418,56 @@ static const char * vocab_type_name(enum llama_vocab_type t) {
     return "UNKNOWN";
 }
 
-static void emit_graph(const Tracer & tr, int step, bool reused, int graph_id, int64_t t_us) {
+// ---- source locations (from the generated table) ------------------------------------------
+
+static std::string src_url(const char * file, int line) {
+    return std::string("https://github.com/ggml-org/llama.cpp/blob/") + LLAMACPP_COMMIT_FULL + "/" + file + "#L" + std::to_string(line);
+}
+
+static void emit_srcloc(Json & j, const char * fn, const char * file, int line) {
+    j.obj();
+    if (fn) j.k("fn").s(fn);
+    j.k("file").s(file);
+    j.k("line").i(line);
+    j.k("url").s(src_url(file, line));
+    j.end();
+}
+
+// printf-style name pattern match: %s any run of characters, %d one or more digits.
+static bool fmt_match(const char * pat, const char * s) {
+    if (*pat == 0) return *s == 0;
+    if (pat[0] == '%' && pat[1] == 's') {
+        for (const char * t = s; ; t++) { if (fmt_match(pat + 2, t)) return true; if (*t == 0) return false; }
+    }
+    if (pat[0] == '%' && pat[1] == 'd') {
+        if (!isdigit((unsigned char) *s)) return false;
+        const char * t = s;
+        while (isdigit((unsigned char) *t)) t++;
+        for (const char * u = s + 1; u <= t; u++) if (fmt_match(pat + 2, u)) return true;
+        return false;
+    }
+    return *pat == *s && fmt_match(pat + 1, s + 1);
+}
+
+// Source lines that assign this tensor name, the architecture's model file first.
+static std::vector<const SrcName *> named_at(const std::string & arch, const std::string & stripped, const std::string & base) {
+    std::vector<const SrcName *> out;
+    if (is_generic_name(stripped)) return out;
+    const std::string arch_file = "src/models/" + arch + ".cpp";
+    const char * order[] = {arch_file.c_str(), "src/llama-graph.cpp", "src/llama-kv-cache.cpp", nullptr};
+    for (int pass = 0; pass < 4 && out.size() < 3; pass++) {
+        for (const auto & e : k_src_names) {
+            const bool in_file = order[pass] ? strcmp(e.file, order[pass]) == 0 : true;
+            if (!in_file) continue;
+            if (pass == 3 && (strcmp(e.file, order[0]) == 0 || strcmp(e.file, order[1]) == 0 || strcmp(e.file, order[2]) == 0)) continue;
+            const bool hit = strchr(e.name, '%') ? fmt_match(e.name, stripped.c_str()) : base == e.name;
+            if (hit && out.size() < 3) out.push_back(&e);
+        }
+    }
+    return out;
+}
+
+static void emit_graph(Tracer & tr, int step, bool reused, int graph_id, int64_t t_us) {
     const int n_nodes = (int) tr.nodes.size();
 
     // leaves: src tensors that are not graph nodes, numbered after the nodes in discovery order
@@ -414,78 +490,135 @@ static void emit_graph(const Tracer & tr, int step, bool reused, int graph_id, i
     j.k("graph_id").i(graph_id);
     j.k("n_nodes").i(n_nodes);
     j.k("n_leafs").i((int64_t) leaves.size());
-    if (!reused) {
-        // group: generic-named op nodes attach to the first named node downstream
-        std::vector<std::vector<int>> consumers(n_nodes);
-        for (int i = 0; i < n_nodes; i++)
-            for (const auto * s : tr.nodes[i].src) {
-                int sid = id_of(s);
-                if (sid < n_nodes) consumers[sid].push_back(i);
-            }
-        std::vector<int> group(n_nodes), layer(n_nodes);
-        std::vector<std::string> base(n_nodes);
-        for (int i = n_nodes - 1; i >= 0; i--) {
-            std::string stripped = strip_ggml_suffix(tr.nodes[i].name);
-            split_layer(stripped, base[i], layer[i]);
-            group[i] = i;
-            if (is_generic_name(stripped) && !consumers[i].empty()) {
-                int c = *std::min_element(consumers[i].begin(), consumers[i].end());
-                group[i] = group[c];
-                layer[i] = layer[group[i]];
-            }
-        }
+    if (reused) { emit(j); return; }
 
-        j.k("nodes").arr();
-        for (int i = 0; i < n_nodes; i++) {
-            const auto & r = tr.nodes[i];
-            j.obj();
-            j.k("id").i(i);
-            j.k("kind").s("op");
-            j.k("op").s(r.op);
-            j.k("name").s(r.name);
-            j.k("base").s(base[i]);
-            j.k("layer"); if (layer[i] >= 0) j.i(layer[i]); else j.null();
-            j.k("group").i(group[i]);
-            j.k("shape").arr(); for (int k = 0; k < 4; k++) j.i(r.ne[k]); j.aend();
-            j.k("dtype").s(r.dtype);
-            j.k("is_weight").boolean(r.is_weight);
-            j.k("computed").boolean((r.flags & GGML_TENSOR_FLAG_COMPUTE) != 0);
-            j.k("is_input").boolean((r.flags & GGML_TENSOR_FLAG_INPUT) != 0);
-            j.k("is_output").boolean((r.flags & GGML_TENSOR_FLAG_OUTPUT) != 0);
-            j.end();
-        }
-        for (size_t li = 0; li < leaves.size(); li++) {
-            const ggml_tensor * t = leaves[li];
-            const std::string name = ggml_get_name(t);
-            std::string b; int l;
-            split_layer(strip_ggml_suffix(name), b, l);
-            const bool w = weight_tensor(t);
-            const char * kind = w ? "weight"
-                : (name.rfind("cache_k_", 0) == 0 || name.rfind("cache_v_", 0) == 0) ? "kv_cache"
-                : (t->flags & GGML_TENSOR_FLAG_INPUT) ? "input" : "leaf";
-            j.obj();
-            j.k("id").i(n_nodes + (int64_t) li);
-            j.k("kind").s(kind);
-            j.k("op").s(ggml_op_desc(t));
-            j.k("name").s(name);
-            j.k("base").s(b);
-            j.k("layer"); if (l >= 0) j.i(l); else j.null();
-            j.k("group").i(n_nodes + (int64_t) li);
-            j.k("shape").arr(); for (int k = 0; k < 4; k++) j.i(t->ne[k]); j.aend();
-            j.k("dtype").s(ggml_type_name(t->type));
-            j.k("is_weight").boolean(w);
-            j.k("computed").boolean((t->flags & GGML_TENSOR_FLAG_COMPUTE) != 0);
-            j.k("is_input").boolean((t->flags & GGML_TENSOR_FLAG_INPUT) != 0);
-            j.k("is_output").boolean((t->flags & GGML_TENSOR_FLAG_OUTPUT) != 0);
-            j.end();
-        }
-        j.aend();
+    const int n_total = n_nodes + (int) leaves.size();
+    std::vector<std::vector<int>> consumers(n_total);
+    for (int i = 0; i < n_nodes; i++)
+        for (const auto * s : tr.nodes[i].src) consumers[id_of(s)].push_back(i);
 
-        j.k("edges").arr();
-        for (int i = 0; i < n_nodes; i++)
-            for (const auto * s : tr.nodes[i].src) { j.arr(); j.i(id_of(s)); j.i(i); j.aend(); }
-        j.aend();
+    // group: generic-named op nodes attach to the first named node downstream
+    std::vector<int> group(n_nodes), layer(n_nodes);
+    std::vector<std::string> base(n_nodes), stripped(n_nodes);
+    for (int i = n_nodes - 1; i >= 0; i--) {
+        stripped[i] = strip_ggml_suffix(tr.nodes[i].name);
+        split_layer(stripped[i], base[i], layer[i]);
+        group[i] = i;
+        if (is_generic_name(stripped[i]) && !consumers[i].empty()) {
+            int c = *std::min_element(consumers[i].begin(), consumers[i].end());
+            group[i] = group[c];
+            layer[i] = layer[group[i]];
+        }
     }
+
+    // blocks: the named tensors PLAN.md groups the block view by. An anchor is an op node whose
+    // own name (no ggml suffix) is one of these; every op node belongs to the next anchor of its
+    // layer in execution order; whole-model nodes before the first layer belong to the first anchor.
+    static const char * k_anchor_base[] = {"embd", "attn_out", "ffn_out", "l_out", "result_norm", "result_output"};
+    std::vector<int> anchors;
+    for (int i = 0; i < n_nodes; i++) {
+        if (stripped[i] != tr.nodes[i].name) continue;
+        for (const char * a : k_anchor_base) if (base[i] == a) { anchors.push_back(i); break; }
+    }
+    int first_layered = n_nodes;
+    for (int i = 0; i < n_nodes; i++) if (layer[i] >= 0) { first_layered = i; break; }
+    std::vector<int> block(n_total, -1);
+    for (int i = 0; i < n_nodes && !anchors.empty(); i++) {
+        int b = -1;
+        if (layer[i] < 0 && i < first_layered) {
+            b = anchors.front();
+        } else {
+            for (int a : anchors) if (a >= i && layer[a] == layer[i]) { b = a; break; }
+            if (b < 0) for (int k = (int) anchors.size() - 1; k >= 0; k--) if (layer[anchors[k]] == layer[i]) { b = anchors[k]; break; }
+        }
+        block[i] = b;
+    }
+    for (int l = n_nodes; l < n_total; l++)   // a leaf belongs to the block of its first consumer
+        if (!consumers[l].empty()) block[l] = block[*std::min_element(consumers[l].begin(), consumers[l].end())];
+    tr.node_block.assign(block.begin(), block.begin() + n_nodes);
+
+    auto emit_named_at = [&](const std::string & strp, const std::string & b) {
+        j.k("named_at").arr();
+        for (const auto * e : named_at(tr.arch, strp, b)) emit_srcloc(j, nullptr, e->file, e->line);
+        j.aend();
+    };
+
+    j.k("nodes").arr();
+    for (int i = 0; i < n_nodes; i++) {
+        const auto & r = tr.nodes[i];
+        j.obj();
+        j.k("id").i(i);
+        j.k("kind").s("op");
+        j.k("op").s(r.op);
+        j.k("name").s(r.name);
+        j.k("base").s(base[i]);
+        j.k("layer"); if (layer[i] >= 0) j.i(layer[i]); else j.null();
+        j.k("group").i(group[i]);
+        j.k("block"); if (block[i] >= 0) j.i(block[i]); else j.null();
+        j.k("shape").arr(); for (int k = 0; k < 4; k++) j.i(r.ne[k]); j.aend();
+        j.k("dtype").s(r.dtype);
+        j.k("is_weight").boolean(r.is_weight);
+        j.k("computed").boolean((r.flags & GGML_TENSOR_FLAG_COMPUTE) != 0);
+        j.k("is_input").boolean((r.flags & GGML_TENSOR_FLAG_INPUT) != 0);
+        j.k("is_output").boolean((r.flags & GGML_TENSOR_FLAG_OUTPUT) != 0);
+        emit_named_at(stripped[i], base[i]);
+        j.end();
+    }
+    for (size_t li = 0; li < leaves.size(); li++) {
+        const ggml_tensor * t = leaves[li];
+        const int id = n_nodes + (int) li;
+        const std::string name = ggml_get_name(t);
+        const std::string strp = strip_ggml_suffix(name);
+        std::string b; int l;
+        split_layer(strp, b, l);
+        const bool w = weight_tensor(t);
+        const char * kind = w ? "weight"
+            : (name.rfind("cache_k_", 0) == 0 || name.rfind("cache_v_", 0) == 0) ? "kv_cache"
+            : (t->flags & GGML_TENSOR_FLAG_INPUT) ? "input" : "leaf";
+        j.obj();
+        j.k("id").i(id);
+        j.k("kind").s(kind);
+        j.k("op").s(ggml_op_desc(t));
+        j.k("name").s(name);
+        j.k("base").s(b);
+        j.k("layer"); if (l >= 0) j.i(l); else j.null();
+        j.k("group").i(id);
+        j.k("block"); if (block[id] >= 0) j.i(block[id]); else j.null();
+        j.k("shape").arr(); for (int k = 0; k < 4; k++) j.i(t->ne[k]); j.aend();
+        j.k("dtype").s(ggml_type_name(t->type));
+        j.k("is_weight").boolean(w);
+        j.k("computed").boolean((t->flags & GGML_TENSOR_FLAG_COMPUTE) != 0);
+        j.k("is_input").boolean((t->flags & GGML_TENSOR_FLAG_INPUT) != 0);
+        j.k("is_output").boolean((t->flags & GGML_TENSOR_FLAG_OUTPUT) != 0);
+        emit_named_at(strp, b);
+        j.end();
+    }
+    j.aend();
+
+    j.k("edges").arr();
+    for (int i = 0; i < n_nodes; i++)
+        for (const auto * s : tr.nodes[i].src) { j.arr(); j.i(id_of(s)); j.i(i); j.aend(); }
+    j.aend();
+
+    j.k("blocks").arr();
+    for (int a : anchors) {
+        int n_ops = 0, n_lv = 0, first = -1, last = -1;
+        for (int i = 0; i < n_total; i++) {
+            if (block[i] != a) continue;
+            if (i < n_nodes) { n_ops++; if (first < 0) first = i; last = i; } else n_lv++;
+        }
+        j.obj();
+        j.k("id").i(a);
+        j.k("name").s(tr.nodes[a].name);
+        j.k("base").s(base[a]);
+        j.k("layer"); if (layer[a] >= 0) j.i(layer[a]); else j.null();
+        j.k("n_ops").i(n_ops);
+        j.k("n_leaves").i(n_lv);
+        j.k("first").i(first);
+        j.k("last").i(last);
+        j.end();
+    }
+    j.aend();
     emit(j);
 }
 
@@ -587,6 +720,7 @@ int main(int argc, char ** argv) {
     // ---- model_info -------------------------------------------------------------------------
     {
         const std::string arch = meta_str(model, "general.architecture");
+        tr.arch = arch;
         const std::string name = meta_str(model, "general.name");
         const std::string key_len = meta_str(model, (arch + ".attention.key_length").c_str());
         const std::string n_ff = meta_str(model, (arch + ".feed_forward_length").c_str());
@@ -629,7 +763,19 @@ int main(int argc, char ** argv) {
             j.k(kbuf).s(std::string(vbuf.data(), n));
         }
         j.end();
+        j.k("vocab").arr();
+        for (int v = 0; v < llama_vocab_n_tokens(vocab); v++) j.s(token_piece(vocab, v));
+        j.aend();
+        j.k("sources").obj();
+        for (const auto & f : k_src_funcs) { j.k(f.key); emit_srcloc(j, f.fn, f.file, f.line); }
+        {   // the architecture's graph builder, if it follows the llama_model_<arch>::graph naming
+            const std::string arch_file = "src/models/" + arch + ".cpp";
+            for (const auto & g : k_src_arch_graphs)
+                if (arch_file == g.file) { j.k("arch_graph"); emit_srcloc(j, g.fn, g.file, g.line); break; }
+        }
+        j.end();
         j.k("llama_cpp").obj().k("commit").s(LLAMACPP_COMMIT);
+        j.k("commit_full").s(LLAMACPP_COMMIT_FULL);
         j.k("tag"); if (strlen(LLAMACPP_TAG) == 0) j.null(); else j.s(LLAMACPP_TAG);
         j.end();
         j.k("system_info").s(llama_print_system_info());
@@ -645,6 +791,7 @@ int main(int argc, char ** argv) {
         j.k("flash_attn").boolean(false);
         j.k("capture").arr(); for (const auto & c : st.capture) j.s(c); j.aend();
         j.k("graph_reuse_disabled").boolean(reuse_disabled);
+        j.k("force").arr(); for (llama_token t : st.force) j.i(t); j.aend();
         j.end();
         emit(j);
     }
@@ -751,7 +898,7 @@ int main(int argc, char ** argv) {
         }
 
         // decode, observing every node through cb_eval
-        tr.nodes.clear(); tr.node_index.clear(); tr.execs.clear();
+        tr.nodes.clear(); tr.node_index.clear(); tr.execs.clear(); tr.kv_cells.clear();
         const int reused_before = llama_perf_context(ctx).n_reused;
         const int64_t t_dec0 = now_us();
         const int ret = llama_decode(ctx, batch);
@@ -792,8 +939,33 @@ int main(int argc, char ** argv) {
             j.k("kv_pos_min").i(llama_memory_seq_pos_min(mem, 0));
             j.k("n_nodes").i((int64_t) tr.nodes.size());
             j.k("n_computed").i(n_computed);
+            j.k("kv_cells").arr(); for (int64_t c : tr.kv_cells) j.i(c); j.aend();
             j.k("reused").boolean(reused);
             j.k("graph_id").i(graph_id);
+            // time by ggml op and by block, summed over node_exec dur_us (largest first)
+            std::vector<std::pair<std::string, std::pair<int64_t, int>>> by_op;
+            std::unordered_map<std::string, size_t> op_ix;
+            std::vector<std::pair<int, int64_t>> by_block;
+            std::unordered_map<int, size_t> blk_ix;
+            for (const auto & e : tr.execs) {
+                const std::string & op = tr.nodes[e.id].op;
+                auto it = op_ix.find(op);
+                if (it == op_ix.end()) { op_ix[op] = by_op.size(); by_op.push_back({op, {0, 0}}); it = op_ix.find(op); }
+                by_op[it->second].second.first += e.dur_us;
+                by_op[it->second].second.second += 1;
+                const int b = e.id < (int) tr.node_block.size() ? tr.node_block[e.id] : -1;
+                if (b < 0) continue;
+                auto bt = blk_ix.find(b);
+                if (bt == blk_ix.end()) { blk_ix[b] = by_block.size(); by_block.push_back({b, 0}); bt = blk_ix.find(b); }
+                by_block[bt->second].second += e.dur_us;
+            }
+            std::stable_sort(by_op.begin(), by_op.end(), [](const auto & x, const auto & y) { return x.second.first > y.second.first; });
+            j.k("op_time_us").arr();
+            for (const auto & o : by_op) { j.obj(); j.k("op").s(o.first); j.k("us").i(o.second.first); j.k("n").i(o.second.second); j.end(); }
+            j.aend();
+            j.k("block_time_us").arr();
+            for (const auto & b : by_block) { j.obj(); j.k("block").i(b.first); j.k("us").i(b.second); j.end(); }
+            j.aend();
             emit(j);
         }
 
@@ -825,6 +997,7 @@ int main(int argc, char ** argv) {
             j.k("dur_us").i(sdur);
             j.k("sorted").boolean(cur_p.sorted);
             j.k("selected").i(cur_p.selected);
+            j.k("size").i((int64_t) cur_p.size);
             emit_candidates(j, cur_p);
             emit(j);
         }
@@ -833,7 +1006,17 @@ int main(int argc, char ** argv) {
             fprintf(stderr, "tracer: %s\n", error.c_str());
             break;
         }
-        const llama_token_data chosen = cur_p.data[cur_p.selected];
+        llama_token_data chosen = cur_p.data[cur_p.selected];
+        int selected_ix = (int) cur_p.selected;
+        const bool forced = step < (int) st.force.size();
+        if (forced) {   // fork: take the requested token instead of the sampled one
+            const llama_token want = st.force[step];
+            if (want < 0 || want >= n_vocab) { fprintf(stderr, "tracer: --force id %d out of vocab\n", want); return 1; }
+            selected_ix = -1;
+            chosen = llama_token_data{want, logits[want], NAN};
+            for (size_t ci = 0; ci < cur_p.size; ci++)
+                if (cur_p.data[ci].id == want) { chosen = cur_p.data[ci]; selected_ix = (int) ci; break; }
+        }
         for (auto & sg : stages) llama_sampler_accept(sg.s, chosen.id);
 
         const bool eog = llama_vocab_is_eog(vocab, chosen.id);
@@ -847,7 +1030,8 @@ int main(int argc, char ** argv) {
             j.k("piece_hex").s(hex(piece));
             j.k("p").f(chosen.p);
             j.k("logit").f(chosen.logit);
-            j.k("selected").i(cur_p.selected);
+            j.k("selected").i(selected_ix);
+            j.k("forced").boolean(forced);
             j.k("is_eog").boolean(eog);
             j.k("n_generated").i(n_generated);
             emit(j);

@@ -4,3 +4,5 @@ web/dist/
 *.part
 .DS_Store
 /tmp/
+web/test-results/
+web/playwright-report/
