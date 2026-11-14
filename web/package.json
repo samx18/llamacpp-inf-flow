@@ -1,0 +1,14 @@
+{
+  "name": "llamacpp-inf-flow-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "schema": "ts-json-schema-generator --path src/trace/schema.ts --type TraceEvent --no-top-ref --strict-tuples --out src/trace/trace.schema.json",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "ts-json-schema-generator": "^2.4.0",
+    "typescript": "^5.9.3"
+  }
+}

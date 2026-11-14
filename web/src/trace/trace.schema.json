@@ -1,0 +1,1087 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "$ref": "#/definitions/ModelInfoEvent"
+    },
+    {
+      "$ref": "#/definitions/TokenizeEvent"
+    },
+    {
+      "$ref": "#/definitions/BatchEvent"
+    },
+    {
+      "$ref": "#/definitions/GraphEvent"
+    },
+    {
+      "$ref": "#/definitions/NodeExecEvent"
+    },
+    {
+      "$ref": "#/definitions/DecodeEndEvent"
+    },
+    {
+      "$ref": "#/definitions/LogitsEvent"
+    },
+    {
+      "$ref": "#/definitions/SamplerStageEvent"
+    },
+    {
+      "$ref": "#/definitions/TokenSelectedEvent"
+    },
+    {
+      "$ref": "#/definitions/DoneEvent"
+    }
+  ],
+  "definitions": {
+    "BatchEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "kv_pos_max_before": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_memory_seq_pos_max(mem, 0) before this decode; -1 when the cache is empty"
+        },
+        "n_tokens": {
+          "$ref": "#/definitions/Int"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/definitions/BatchRow"
+          },
+          "type": "array"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "type": {
+          "const": "batch",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kv_pos_max_before",
+        "n_tokens",
+        "rows",
+        "step",
+        "t_us",
+        "type"
+      ],
+      "type": "object"
+    },
+    "BatchRow": {
+      "additionalProperties": false,
+      "properties": {
+        "logits": {
+          "description": "llama_batch.logits flag for this row",
+          "type": "boolean"
+        },
+        "pos": {
+          "$ref": "#/definitions/Int"
+        },
+        "seq_id": {
+          "items": {
+            "$ref": "#/definitions/Int"
+          },
+          "type": "array"
+        },
+        "token": {
+          "$ref": "#/definitions/Int"
+        }
+      },
+      "required": [
+        "token",
+        "pos",
+        "seq_id",
+        "logits"
+      ],
+      "type": "object"
+    },
+    "Candidate": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Int"
+        },
+        "logit": {
+          "$ref": "#/definitions/Float"
+        },
+        "p": {
+          "$ref": "#/definitions/Float",
+          "description": "llama_token_data.p as the sampler left it (top-k does not write p; temp does not update it)"
+        }
+      },
+      "required": [
+        "id",
+        "logit",
+        "p"
+      ],
+      "type": "object"
+    },
+    "DecodeEndEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "compute_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Sum of node_exec dur_us for this decode"
+        },
+        "dur_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Wall time of llama_decode, including tracer callback overhead"
+        },
+        "graph_id": {
+          "$ref": "#/definitions/Int"
+        },
+        "kv_pos_max": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_memory_seq_pos_max(mem, 0) after decode"
+        },
+        "kv_pos_min": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_memory_seq_pos_min(mem, 0) after decode"
+        },
+        "n_computed": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_nodes": {
+          "$ref": "#/definitions/Int"
+        },
+        "ret": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_decode return code"
+        },
+        "reused": {
+          "type": "boolean"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "type": {
+          "const": "decode_end",
+          "type": "string"
+        }
+      },
+      "required": [
+        "compute_us",
+        "dur_us",
+        "graph_id",
+        "kv_pos_max",
+        "kv_pos_min",
+        "n_computed",
+        "n_nodes",
+        "ret",
+        "reused",
+        "step",
+        "t_us",
+        "type"
+      ],
+      "type": "object"
+    },
+    "DoneEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "n_decode": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_generated": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_graphs_built": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_graphs_reused": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_prompt": {
+          "$ref": "#/definitions/Int"
+        },
+        "perf": {
+          "additionalProperties": false,
+          "description": "llama_perf_context as reported by llama.cpp",
+          "properties": {
+            "n_eval": {
+              "$ref": "#/definitions/Int"
+            },
+            "n_p_eval": {
+              "$ref": "#/definitions/Int"
+            },
+            "n_reused": {
+              "$ref": "#/definitions/Int"
+            },
+            "t_eval_ms": {
+              "type": "number"
+            },
+            "t_load_ms": {
+              "type": "number"
+            },
+            "t_p_eval_ms": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "t_load_ms",
+            "t_p_eval_ms",
+            "t_eval_ms",
+            "n_p_eval",
+            "n_eval",
+            "n_reused"
+          ],
+          "type": "object"
+        },
+        "reason": {
+          "enum": [
+            "eog",
+            "n_predict",
+            "error"
+          ],
+          "type": "string"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "text": {
+          "description": "Generated text: concatenated pieces of the selected tokens",
+          "type": "string"
+        },
+        "totals_us": {
+          "additionalProperties": false,
+          "properties": {
+            "decode": {
+              "$ref": "#/definitions/Int"
+            },
+            "load": {
+              "$ref": "#/definitions/Int"
+            },
+            "prefill": {
+              "$ref": "#/definitions/Int"
+            },
+            "sample": {
+              "$ref": "#/definitions/Int"
+            },
+            "tokenize": {
+              "$ref": "#/definitions/Int"
+            },
+            "total": {
+              "$ref": "#/definitions/Int"
+            }
+          },
+          "required": [
+            "load",
+            "tokenize",
+            "prefill",
+            "decode",
+            "sample",
+            "total"
+          ],
+          "type": "object"
+        },
+        "type": {
+          "const": "done",
+          "type": "string"
+        }
+      },
+      "required": [
+        "n_decode",
+        "n_generated",
+        "n_graphs_built",
+        "n_graphs_reused",
+        "n_prompt",
+        "perf",
+        "reason",
+        "step",
+        "t_us",
+        "text",
+        "totals_us",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Float": {
+      "description": "A float as produced by llama.cpp; null when it was NaN or +/-Inf.",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "GraphEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "edges": {
+          "description": "[from, to] node ids, one per non-null src[] slot of each graph node, in src order",
+          "items": {
+            "items": {
+              "$ref": "#/definitions/Int"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "graph_id": {
+          "$ref": "#/definitions/Int",
+          "description": "Counter of built graphs; a reused graph repeats the id of the graph it reuses"
+        },
+        "n_leafs": {
+          "$ref": "#/definitions/Int",
+          "description": "Number of leaves referenced through src[] (weights, inputs, KV cache)"
+        },
+        "n_nodes": {
+          "$ref": "#/definitions/Int",
+          "description": "Number of graph nodes visited by the scheduler callback (leaves excluded)"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/definitions/GraphNode"
+          },
+          "type": "array"
+        },
+        "reused": {
+          "description": "true when llama.cpp reused the previous graph (llama_perf_context().n_reused increased during this decode). Reused graphs carry no node list; the player keeps the previous one.",
+          "type": "boolean"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "type": {
+          "const": "graph",
+          "type": "string"
+        }
+      },
+      "required": [
+        "graph_id",
+        "n_leafs",
+        "n_nodes",
+        "reused",
+        "step",
+        "t_us",
+        "type"
+      ],
+      "type": "object"
+    },
+    "GraphNode": {
+      "additionalProperties": false,
+      "properties": {
+        "base": {
+          "description": "name with ggml's \" (view)\", \" (permuted)\", ... suffixes and the \"-N\" layer suffix removed",
+          "type": "string"
+        },
+        "computed": {
+          "description": "GGML_TENSOR_FLAG_COMPUTE: false for branches of ggml_build_forward_select that are not taken",
+          "type": "boolean"
+        },
+        "dtype": {
+          "description": "ggml_type_name",
+          "type": "string"
+        },
+        "group": {
+          "$ref": "#/definitions/Int",
+          "description": "Nodes with a generic name (\"node_12\", \"(view)\") are attached to the first named node downstream: `group` is that node's id. Named nodes and leaves have group == id."
+        },
+        "id": {
+          "$ref": "#/definitions/Int",
+          "description": "Graph nodes: execution index 0..n_nodes-1. Leaves: n_nodes and up."
+        },
+        "is_input": {
+          "description": "GGML_TENSOR_FLAG_INPUT / GGML_TENSOR_FLAG_OUTPUT",
+          "type": "boolean"
+        },
+        "is_output": {
+          "type": "boolean"
+        },
+        "is_weight": {
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/definitions/NodeKind"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Layer from the \"-N\" name suffix or \"blk.N.\" / \"cache_*_lN\" prefix; null for whole-model tensors"
+        },
+        "name": {
+          "description": "ggml_get_name, as set by llama.cpp (e.g. \"attn_out-3\", \"Qcur-0 (view)\")",
+          "type": "string"
+        },
+        "op": {
+          "description": "ggml_op_desc (unary ops show their unary name)",
+          "type": "string"
+        },
+        "shape": {
+          "$ref": "#/definitions/Shape"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "op",
+        "name",
+        "base",
+        "layer",
+        "group",
+        "shape",
+        "dtype",
+        "is_weight",
+        "computed",
+        "is_input",
+        "is_output"
+      ],
+      "type": "object"
+    },
+    "Int": {
+      "type": "integer"
+    },
+    "LogitsEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "idx": {
+          "$ref": "#/definitions/Int",
+          "description": "Batch index passed to llama_get_logits_ith (-1: last output)"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "type": {
+          "const": "logits",
+          "type": "string"
+        },
+        "values": {
+          "description": "One per vocab entry",
+          "items": {
+            "$ref": "#/definitions/Float"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "idx",
+        "step",
+        "t_us",
+        "type",
+        "values"
+      ],
+      "type": "object"
+    },
+    "ModelInfoEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "arch": {
+          "description": "GGUF general.architecture",
+          "type": "string"
+        },
+        "bos_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "desc": {
+          "description": "llama_model_desc",
+          "type": "string"
+        },
+        "eos_id": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "file_name": {
+          "type": "string"
+        },
+        "file_size": {
+          "$ref": "#/definitions/Int",
+          "description": "Size of the GGUF file on disk, bytes"
+        },
+        "llama_cpp": {
+          "additionalProperties": false,
+          "properties": {
+            "commit": {
+              "type": "string"
+            },
+            "tag": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "commit",
+            "tag"
+          ],
+          "type": "object"
+        },
+        "meta": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Every GGUF metadata key/value pair as llama_model_meta_val_str_by_index renders it",
+          "type": "object"
+        },
+        "model_size": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_model_size: bytes of all tensors"
+        },
+        "n_batch": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_n_batch / llama_n_ubatch of the context"
+        },
+        "n_ctx": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_n_ctx of the context the tracer created"
+        },
+        "n_ctx_train": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_model_n_ctx_train"
+        },
+        "n_embd": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_model_n_embd"
+        },
+        "n_embd_head": {
+          "$ref": "#/definitions/Int",
+          "description": "GGUF <arch>.attention.key_length if present, else n_embd / n_head as computed by the tracer"
+        },
+        "n_ff": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "GGUF <arch>.feed_forward_length, if present"
+        },
+        "n_head": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_model_n_head"
+        },
+        "n_head_kv": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_model_n_head_kv"
+        },
+        "n_layer": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_model_n_layer"
+        },
+        "n_params": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_model_n_params"
+        },
+        "n_ubatch": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_vocab": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_vocab_n_tokens"
+        },
+        "name": {
+          "description": "GGUF general.name, if present",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "settings": {
+          "$ref": "#/definitions/TracerSettings"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "system_info": {
+          "description": "llama_print_system_info",
+          "type": "string"
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "type": {
+          "const": "model_info",
+          "type": "string"
+        },
+        "vocab_type": {
+          "description": "llama_vocab_type: name of the enum value (SPM, BPE, ...)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "arch",
+        "bos_id",
+        "desc",
+        "eos_id",
+        "file_name",
+        "file_size",
+        "llama_cpp",
+        "meta",
+        "model_size",
+        "n_batch",
+        "n_ctx",
+        "n_ctx_train",
+        "n_embd",
+        "n_embd_head",
+        "n_ff",
+        "n_head",
+        "n_head_kv",
+        "n_layer",
+        "n_params",
+        "n_ubatch",
+        "n_vocab",
+        "name",
+        "settings",
+        "step",
+        "system_info",
+        "t_us",
+        "type",
+        "vocab_type"
+      ],
+      "type": "object"
+    },
+    "NodeExecEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "computed": {
+          "type": "boolean"
+        },
+        "dur_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Wall time from the cb_eval ask==true return to the ask==false call: one-node compute + sync"
+        },
+        "id": {
+          "$ref": "#/definitions/Int"
+        },
+        "seq": {
+          "$ref": "#/definitions/Int",
+          "description": "Order in which the scheduler computed this node in this decode, 0-based"
+        },
+        "stats": {
+          "$ref": "#/definitions/TensorStats",
+          "description": "Absent for nodes that were not computed or have a non-numeric type"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "type": {
+          "const": "node_exec",
+          "type": "string"
+        },
+        "values": {
+          "description": "Full values in ggml element order (ne[0] fastest), only for captured tensors",
+          "items": {
+            "$ref": "#/definitions/Float"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "computed",
+        "dur_us",
+        "id",
+        "seq",
+        "step",
+        "t_us",
+        "type"
+      ],
+      "type": "object"
+    },
+    "NodeKind": {
+      "enum": [
+        "op",
+        "weight",
+        "input",
+        "kv_cache",
+        "leaf"
+      ],
+      "type": "string"
+    },
+    "SamplerStageEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "description": "Candidates in array order after this sampler (size == llama_token_data_array.size)",
+          "items": {
+            "$ref": "#/definitions/Candidate"
+          },
+          "type": "array"
+        },
+        "dur_us": {
+          "$ref": "#/definitions/Int"
+        },
+        "index": {
+          "$ref": "#/definitions/Int",
+          "description": "Position in the sampler sequence, 0-based"
+        },
+        "name": {
+          "description": "llama_sampler_name",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        "selected": {
+          "$ref": "#/definitions/Int"
+        },
+        "sorted": {
+          "description": "llama_token_data_array.sorted / .selected after this sampler",
+          "type": "boolean"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "type": {
+          "const": "sampler_stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidates",
+        "dur_us",
+        "index",
+        "name",
+        "params",
+        "selected",
+        "sorted",
+        "step",
+        "t_us",
+        "type"
+      ],
+      "type": "object"
+    },
+    "Shape": {
+      "description": "ggml tensor shape, ne[0..3] (ne[0] is the fastest-moving dimension).",
+      "items": {
+        "$ref": "#/definitions/Int"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "type": "array"
+    },
+    "TensorStats": {
+      "additionalProperties": false,
+      "properties": {
+        "max": {
+          "$ref": "#/definitions/Float"
+        },
+        "mean": {
+          "$ref": "#/definitions/Float"
+        },
+        "min": {
+          "$ref": "#/definitions/Float",
+          "description": "min / max / mean over finite elements; null when there are none"
+        },
+        "n_nan": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_neg_inf": {
+          "$ref": "#/definitions/Int"
+        },
+        "n_pos_inf": {
+          "$ref": "#/definitions/Int"
+        }
+      },
+      "required": [
+        "min",
+        "max",
+        "mean",
+        "n_nan",
+        "n_pos_inf",
+        "n_neg_inf"
+      ],
+      "type": "object"
+    },
+    "TokenInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "attr": {
+          "$ref": "#/definitions/Int",
+          "description": "llama_vocab_get_attr bit field"
+        },
+        "end": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "$ref": "#/definitions/Int"
+        },
+        "piece": {
+          "description": "llama_token_to_piece(special=true); invalid UTF-8 bytes replaced with U+FFFD",
+          "type": "string"
+        },
+        "piece_hex": {
+          "description": "The raw piece bytes, hex encoded",
+          "type": "string"
+        },
+        "special": {
+          "description": "llama_vocab_is_control",
+          "type": "boolean"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Int"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Byte span [start, end) in the prompt, from cumulative llama_detokenize; null if not mappable"
+        }
+      },
+      "required": [
+        "id",
+        "piece",
+        "piece_hex",
+        "start",
+        "end",
+        "special",
+        "attr"
+      ],
+      "type": "object"
+    },
+    "TokenSelectedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Int"
+        },
+        "is_eog": {
+          "description": "llama_vocab_is_eog",
+          "type": "boolean"
+        },
+        "logit": {
+          "$ref": "#/definitions/Float"
+        },
+        "n_generated": {
+          "$ref": "#/definitions/Int",
+          "description": "1-based count of generated tokens"
+        },
+        "p": {
+          "$ref": "#/definitions/Float",
+          "description": "p of the selected candidate as left by the last sampler (dist normalises it; greedy leaves 0)"
+        },
+        "piece": {
+          "type": "string"
+        },
+        "piece_hex": {
+          "type": "string"
+        },
+        "selected": {
+          "$ref": "#/definitions/Int",
+          "description": "Index of the selected entry in the final candidate array"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "type": {
+          "const": "token_selected",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "is_eog",
+        "logit",
+        "n_generated",
+        "p",
+        "piece",
+        "piece_hex",
+        "selected",
+        "step",
+        "t_us",
+        "type"
+      ],
+      "type": "object"
+    },
+    "TokenizeEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "add_special": {
+          "type": "boolean"
+        },
+        "dur_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Wall time of the llama_tokenize call"
+        },
+        "parse_special": {
+          "type": "boolean"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "prompt_bytes": {
+          "$ref": "#/definitions/Int",
+          "description": "Prompt length in bytes (UTF-8)"
+        },
+        "step": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "t_us": {
+          "$ref": "#/definitions/Int",
+          "description": "Microseconds since tracer start.",
+          "minimum": 0
+        },
+        "tokens": {
+          "items": {
+            "$ref": "#/definitions/TokenInfo"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "tokenize",
+          "type": "string"
+        }
+      },
+      "required": [
+        "add_special",
+        "dur_us",
+        "parse_special",
+        "prompt",
+        "prompt_bytes",
+        "step",
+        "t_us",
+        "tokens",
+        "type"
+      ],
+      "type": "object"
+    },
+    "TracerSettings": {
+      "additionalProperties": false,
+      "properties": {
+        "capture": {
+          "description": "Names of the captured tensors whose values ship in full (base names, layer suffix stripped)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "flash_attn": {
+          "type": "boolean"
+        },
+        "graph_reuse_disabled": {
+          "type": "boolean"
+        },
+        "n_predict": {
+          "$ref": "#/definitions/Int",
+          "minimum": 0
+        },
+        "n_threads": {
+          "$ref": "#/definitions/Int"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "sampling": {
+          "description": "'greedy' uses llama_sampler_init_greedy only; 'dist' runs top-k, top-p, temp, dist.",
+          "enum": [
+            "greedy",
+            "dist"
+          ],
+          "type": "string"
+        },
+        "seed": {
+          "$ref": "#/definitions/Int"
+        },
+        "temp": {
+          "type": "number"
+        },
+        "top_k": {
+          "$ref": "#/definitions/Int"
+        },
+        "top_p": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "prompt",
+        "n_predict",
+        "seed",
+        "sampling",
+        "top_k",
+        "top_p",
+        "temp",
+        "n_threads",
+        "flash_attn",
+        "capture",
+        "graph_reuse_disabled"
+      ],
+      "type": "object"
+    }
+  }
+}

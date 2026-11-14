@@ -1,0 +1,6 @@
+engine/build/
+web/node_modules/
+web/dist/
+*.part
+.DS_Store
+/tmp/
