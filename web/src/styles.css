@@ -196,8 +196,8 @@ tr.logits-row td { border-bottom-color: var(--orange); }
 .sample-bottom { display: flex; gap: 40px; align-items: flex-start; }
 .cand-table td { padding: 3px 14px; }
 .cand-table tr.chosen td { color: var(--orange); }
-.p-cell { position: relative; min-width: 120px; }
-.p-bar { position: absolute; left: 0; top: 4px; bottom: 4px; background: var(--blue-dim); border-radius: 0 3px 3px 0; opacity: .7; }
+.p-cell { position: relative; width: 220px; }
+.p-bar { position: absolute; left: 6px; top: 8px; bottom: 8px; background: var(--blue); border-radius: 0 4px 4px 0; }
 .p-cell .p-val { position: relative; }
 .fork-btn { font-size: 14px; padding: 1px 10px; }
 .chosen-box { display: flex; gap: 28px; align-items: center; }

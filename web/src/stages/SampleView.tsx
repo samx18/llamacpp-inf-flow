@@ -14,7 +14,7 @@ export function SampleView({ trace, step, beat, p, record, width, onFork }: View
   let lo = Infinity, hi = -Infinity;
   for (const v of logits) if (v !== null) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
   for (const s of step.stages) for (const c of s.candidates) if (c.logit !== null) hi = Math.max(hi, c.logit);
-  const chartW = width - 64, chartH = record ? 380 : 300;
+  const chartW = width - 64, chartH = record ? 310 : 300;
   const bw = chartW / nV;
   const y = (v: number) => chartH - ((v - lo) / (hi - lo || 1)) * (chartH - 34);
 
@@ -23,7 +23,7 @@ export function SampleView({ trace, step, beat, p, record, width, onFork }: View
   const fade = Math.min(1, p * 2.5);
   const sel = step.selected;
   const keys = ['get_logits_ith', 'sampler_apply', ...(stage ? [`sampler_${stage.name}`] : []), ...(chosen ? ['sampler_accept'] : [])];
-  const rows = (stage?.candidates ?? []).slice(0, record ? 8 : 10);
+  const rows = (stage?.candidates ?? []).slice(0, record ? 6 : 8);
 
   return (
     <div className="view sample-view" data-stage-panel="sample">
@@ -66,14 +66,15 @@ export function SampleView({ trace, step, beat, p, record, width, onFork }: View
       <div className="sample-bottom">
         {stage && (
           <table className="cand-table">
-            <thead><tr><th className="num">id</th><th>piece</th><th className="num">logit</th><th className="num">p</th>{onFork && !record && <th />}</tr></thead>
+            <thead><tr><th className="num">id</th><th>piece</th><th className="num">logit</th><th className="num">p</th><th />{onFork && !record && <th />}</tr></thead>
             <tbody>
               {rows.map((c, i) => (
                 <tr key={c.id} className={`${chosen && c.id === sel.id ? 'chosen' : ''}${i === stage.selected ? ' selected' : ''}`}>
                   <td className="num">{c.id}</td>
                   <td className="piece">{showPiece(piece(trace, c.id))}</td>
                   <td className="num">{fmtNum(c.logit)}</td>
-                  <td className="num p-cell"><span className="p-bar" style={{ width: `${(c.p ?? 0) * 100}%` }} /><span className="p-val">{fmtNum(c.p, 4)}</span></td>
+                  <td className="num">{fmtNum(c.p, 4)}</td>
+                  <td className="p-cell"><span className="p-bar" style={{ width: `${(c.p ?? 0) * 100}%` }} /></td>
                   {onFork && !record && (
                     <td>{c.id !== sel.id && <button className="fork-btn" onClick={() => onFork(step.step, c.id)}>fork</button>}</td>
                   )}

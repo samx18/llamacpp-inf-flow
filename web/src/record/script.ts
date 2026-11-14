@@ -1,11 +1,13 @@
 // Record mode script: the fixed run and every stage duration, in one place. Tune by watching.
 //
 // The trace is the saved fixture, so every retake is identical. scripts/make-fixture.sh generates
-// it with these exact settings; Record mode refuses to start if the trace's settings differ.
+// it from RECORD_RUN below; Record mode refuses to start if the trace's settings differ.
 export const RECORD_RUN = {
   trace: '/demo-trace.jsonl',
-  prompt: 'Once upon a time',
-  seed: 1,
+  // chosen in Phase 5: reads as a sentence, and step 0's top-p keeps 22 candidates, so the
+  // fully played sample stage shows a real draw (p = 0.26) rather than a single survivor
+  prompt: 'Lily wanted to',
+  seed: 11,
   n_predict: 12,
 };
 
