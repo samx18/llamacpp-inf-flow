@@ -784,7 +784,7 @@ int main(int argc, char ** argv) {
         for (const auto & e : tr.execs) { compute_us += e.dur_us; n_computed += e.computed; }
         n_past += batch.n_tokens;
         {
-            Json j = begin_event("decode_end", step);
+            Json j = begin_event("decode_end", step, t_dec0 + dur);  // when llama_decode returned
             j.k("ret").i(ret);
             j.k("dur_us").i(dur);
             j.k("compute_us").i(compute_us);
