@@ -3,4 +3,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cmake -S engine -B engine/build -DCMAKE_BUILD_TYPE=Release
-cmake --build engine/build -j --target ${TARGETS:-tracer llama-eval-callback llama-simple}
+cmake --build engine/build -j --target ${TARGETS:-tracer simple-ids llama-eval-callback llama-simple}

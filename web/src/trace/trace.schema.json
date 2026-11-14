@@ -894,7 +894,7 @@
               "type": "null"
             }
           ],
-          "description": "Byte span [start, end) in the prompt, from cumulative llama_detokenize; null if not mappable"
+          "description": "Byte span [start, end) in the prompt, from cumulative llama_detokenize; null if not mappable. A token that only renders the tokenizer's added space prefix, or BOS, has an empty span."
         }
       },
       "required": [
@@ -974,6 +974,10 @@
         "add_special": {
           "type": "boolean"
         },
+        "detokenized": {
+          "description": "llama_detokenize of all prompt tokens. For SPM vocabularies this is the prompt with the space prefix the tokenizer added; token spans are relative to `prompt`, not to this string.",
+          "type": "string"
+        },
         "dur_us": {
           "$ref": "#/definitions/Int",
           "description": "Wall time of the llama_tokenize call"
@@ -1010,6 +1014,7 @@
       },
       "required": [
         "add_special",
+        "detokenized",
         "dur_us",
         "parse_special",
         "prompt",

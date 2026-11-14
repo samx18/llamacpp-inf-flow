@@ -39,3 +39,8 @@ if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tracer.cpp)
         LLAMACPP_COMMIT="${LLAMACPP_COMMIT}" LLAMACPP_TAG="${LLAMACPP_TAG}")
     set_target_properties(tracer PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()
+
+# Reference for the Phase 1 greedy check: examples/simple plus one line printing token ids.
+add_executable(simple-ids ref/simple_ids.cpp)
+target_link_libraries(simple-ids PRIVATE llama ggml)
+set_target_properties(simple-ids PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

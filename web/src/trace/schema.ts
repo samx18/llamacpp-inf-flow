@@ -105,7 +105,8 @@ export interface TokenInfo {
   piece: string;
   /** The raw piece bytes, hex encoded */
   piece_hex: string;
-  /** Byte span [start, end) in the prompt, from cumulative llama_detokenize; null if not mappable */
+  /** Byte span [start, end) in the prompt, from cumulative llama_detokenize; null if not mappable.
+   *  A token that only renders the tokenizer's added space prefix, or BOS, has an empty span. */
   start: Int | null;
   end: Int | null;
   /** llama_vocab_is_control */
@@ -119,6 +120,11 @@ export interface TokenizeEvent extends EventBase {
   prompt: string;
   /** Prompt length in bytes (UTF-8) */
   prompt_bytes: Int;
+  /**
+   * llama_detokenize of all prompt tokens. For SPM vocabularies this is the prompt with the
+   * space prefix the tokenizer added; token spans are relative to `prompt`, not to this string.
+   */
+  detokenized: string;
   add_special: boolean;
   parse_special: boolean;
   /** Wall time of the llama_tokenize call */

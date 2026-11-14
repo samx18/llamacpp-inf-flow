@@ -19,3 +19,13 @@ git submodule update --init
 
 Model: `stories260K.gguf` from the `tinyllamas` folder of
 <https://huggingface.co/ggml-org/models-moved>.
+
+## Tracer
+
+```sh
+engine/build/bin/tracer --model models/stories260K.gguf --prompt "Once upon a time" --seed 1 --n-predict 12 > trace.jsonl
+node scripts/validate-trace.mjs trace.jsonl     # needs: (cd web && npm install)
+```
+
+Regenerate the saved UI fixture with `./scripts/make-fixture.sh` (writes `web/public/demo-trace.jsonl`).
+Checks: `./scripts/check-phase0.sh`, `python3 -I scripts/check-phase1.py`.
