@@ -7,7 +7,7 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-# CPU backend only (PLAN.md "Settings to fix"). No Metal, no BLAS backend,
+# CPU backend only. No Metal, no BLAS backend,
 # so llama-simple, llama-eval-callback and the tracer all run the same CPU path.
 set(GGML_METAL       OFF CACHE BOOL "" FORCE)
 set(GGML_BLAS        OFF CACHE BOOL "" FORCE)

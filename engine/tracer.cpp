@@ -511,7 +511,7 @@ static void emit_graph(Tracer & tr, int step, bool reused, int graph_id, int64_t
         }
     }
 
-    // blocks: the named tensors PLAN.md groups the block view by. An anchor is an op node whose
+    // blocks: the named tensors the block view groups by. An anchor is an op node whose
     // own name (no ggml suffix) is one of these; every op node belongs to the next anchor of its
     // layer in execution order; whole-model nodes before the first layer belong to the first anchor.
     static const char * k_anchor_base[] = {"embd", "attn_out", "ffn_out", "l_out", "result_norm", "result_output"};

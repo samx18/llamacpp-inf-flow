@@ -3,8 +3,6 @@
 A native tracer records one llama.cpp run as newline-delimited JSON events; a web page plays the
 trace back stage by stage: tokenize, prefill, build graph, dispatch, sample, repeat. Every number
 and label on screen comes from the tracer's events. The browser lays out and animates them.
-See `PLAN.md` for the design and `CLAUDE.md` for the project rules and the facts established
-against the pinned source.
 
 ## Pinned llama.cpp
 
@@ -65,7 +63,7 @@ if that trace's settings differ from the script. Regenerate the trace after chan
 ./scripts/make-fixture.sh        # runs the tracer with RECORD_RUN from script.ts, validates the output
 ```
 
-Current run: "Lily wanted to", seed 11, 12 tokens → " go on a walk with her family".
+Current run: "Sam wanted to", seed 11, 12 tokens → " go to the park with his friends."
 
 ## Tracer
 

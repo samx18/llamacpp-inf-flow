@@ -4,14 +4,14 @@
 // it from RECORD_RUN below; Record mode refuses to start if the trace's settings differ.
 export const RECORD_RUN = {
   trace: '/demo-trace.jsonl',
-  // chosen in Phase 5: reads as a sentence, and step 0's top-p keeps 22 candidates, so the
-  // fully played sample stage shows a real draw (p = 0.26) rather than a single survivor
-  prompt: 'Lily wanted to',
+  // Step 0's top-p keeps 23 candidates, so the fully played sample stage shows a real draw
+  // (p = 0.22) rather than a single survivor
+  prompt: 'Sam wanted to',
   seed: 11,
   n_predict: 12,
 };
 
-/** Milliseconds. Starting values from PLAN.md; total budget about 50 s. */
+/** Milliseconds; total budget about 50 s. */
 export const RECORD_DURATIONS = {
   tokenize: 4000,
   prefill: 5000,
