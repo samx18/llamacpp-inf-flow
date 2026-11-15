@@ -19,3 +19,5 @@ PLAN.md
 *.webm
 *.mp4
 *.mov
+# README screenshots are the one exception
+!docs/*.png

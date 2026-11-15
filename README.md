@@ -4,6 +4,15 @@ A native tracer records one llama.cpp run as newline-delimited JSON events; a we
 trace back stage by stage: tokenize, prefill, build graph, dispatch, sample, repeat. Every number
 and label on screen comes from the tracer's events. The browser lays out and animates them.
 
+**Overview**: the six phases in plain language (here, Sample: 512 scored → top-k → top-p → one draw).
+
+![Overview tab, Sample phase](docs/overview.png)
+
+**Inside llama.cpp**: the same run at the op and tensor level (here, Dispatch: the scheduler
+computing layer 1 attention node by node, with per-op timings and the KV cache filling).
+
+![Inside llama.cpp tab, Dispatch stage](docs/inside-llama-cpp.png)
+
 ## Pinned llama.cpp
 
 `engine/third_party/llama.cpp` is a git submodule pinned to release tag **b12387**

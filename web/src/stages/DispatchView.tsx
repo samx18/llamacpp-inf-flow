@@ -93,7 +93,7 @@ export function DispatchView({ trace, step, beat, p, record, width, height }: Vi
                 })}
               </tbody>
             </table>
-            <OpTimeBars step={step} limit={record ? 6 : 8} />
+            <OpTimeBars step={step} limit={6} />
           </div>
         </div>
       )}
